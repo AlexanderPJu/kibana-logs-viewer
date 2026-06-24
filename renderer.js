@@ -1,122 +1,83 @@
 let currentData = [];
 let currentHeaders = [];
-// --- Загружаем чипсы из локальной памяти при старте ---
 let highlightRules = JSON.parse(localStorage.getItem('highlightRules')) || []; 
-let jsonToggledRows = new Set(); // Храним индексы строк, где включен JSON
 
-// Отрисовываем чипсы сразу при запуске программы (до загрузки файла)
+function formatForDateTimeLocal(date) {
+    const d = new Date(date);
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+}
+
+function setDefaultDates() {
+    const now = new Date();
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    document.getElementById('date-to').value = formatForDateTimeLocal(now);
+    document.getElementById('date-from').value = formatForDateTimeLocal(oneWeekAgo);
+}
+
+window.clearDate = function(id) { document.getElementById(id).value = ''; renderTable(); }
+window.clearSearch = function() { document.getElementById('search-input').value = ''; renderTable(); }
+
 renderChips();
+setDefaultDates();
 
-// --- Загрузка файла ---
 document.getElementById('open-file-btn').addEventListener('click', async () => {
-    const statusDiv = document.getElementById('status');
-    const tableContainer = document.getElementById('table-container');
-
-    statusDiv.textContent = 'Загрузка...';
     const csvContent = await window.electronAPI.openFile();
-
     if (csvContent) {
-        jsonToggledRows.clear(); // Сбрасываем состояния чекбоксов при открытии нового файла
+        document.getElementById('search-input').value = '';
         Papa.parse(csvContent, {
-            header: true,
-            skipEmptyLines: true,
+            header: true, skipEmptyLines: true,
             complete: (results) => {
                 currentData = results.data;
                 currentHeaders = results.meta.fields;
-                statusDiv.textContent = `Загружено строк: ${currentData.length}`;
                 renderTable();
             }
         });
-    } else {
-        statusDiv.textContent = 'Отменено.';
     }
 });
 
-// --- Управление ключевыми словами ---
-document.getElementById('add-keyword-btn').addEventListener('click', addKeyword);
-document.getElementById('keyword-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') addKeyword();
-});
+document.getElementById('search-input').addEventListener('input', renderTable);
+document.getElementById('date-from').addEventListener('input', renderTable);
+document.getElementById('date-to').addEventListener('input', renderTable);
 
-// Функция для сохранения правил в память
-function saveRules() {
-    localStorage.setItem('highlightRules', JSON.stringify(highlightRules));
-}
+document.getElementById('add-keyword-btn').addEventListener('click', addKeyword);
+document.getElementById('keyword-input').addEventListener('keypress', (e) => { if (e.key === 'Enter') addKeyword(); });
+
+function saveRules() { localStorage.setItem('highlightRules', JSON.stringify(highlightRules)); }
 
 function addKeyword() {
     const input = document.getElementById('keyword-input');
     const colorPicker = document.getElementById('keyword-color');
     const word = input.value.trim();
-    
     if (!word) return;
 
-    highlightRules.push({ 
-        word: word, 
-        color: colorPicker.value,
-        bgColor: colorPicker.value + '33',
-        enabled: true // По умолчанию новое слово включено
-    });
-
+    highlightRules.push({ word: word, color: colorPicker.value, bgColor: colorPicker.value + '33', enabled: true });
     input.value = '';
-    saveRules();
-    renderChips();
-    renderTable(); 
+    saveRules(); renderChips(); renderTable(); 
 }
 
-// Делаем функции глобальными, чтобы они работали из inline HTML
-window.removeKeyword = function(index) {
-    highlightRules.splice(index, 1);
-    saveRules();
-    renderChips();
-    renderTable();
-}
-
-window.toggleKeyword = function(index, isChecked) {
-    highlightRules[index].enabled = isChecked;
-    saveRules();
-    renderChips(); // Обновляем прозрачность чипса
-    renderTable(); // Обновляем таблицу
-}
-
-window.changeKeywordColor = function(index, newColor) {
-    highlightRules[index].color = newColor;
-    highlightRules[index].bgColor = newColor + '33';
-    saveRules();
-    renderChips();
-    renderTable();
-}
+window.removeKeyword = function(index) { highlightRules.splice(index, 1); saveRules(); renderChips(); renderTable(); }
+window.toggleKeyword = function(index, isChecked) { highlightRules[index].enabled = isChecked; saveRules(); renderChips(); renderTable(); }
+window.changeKeywordColor = function(index, newColor) { highlightRules[index].color = newColor; highlightRules[index].bgColor = newColor + '33'; saveRules(); renderChips(); renderTable(); }
 
 function renderChips() {
-    const container = document.getElementById('active-keywords');
+    const container = document.getElementById('active-keywords-container');
+    if (highlightRules.length === 0) {
+        container.innerHTML = '<span style="color: #666; font-style: italic; font-size: 13px;">Добавьте ключевые слова для подсветки...</span>';
+        return;
+    }
     container.innerHTML = highlightRules.map((rule, index) => {
-        const isEnabled = rule.enabled !== false; // Защита для старых сохраненных правил без этого поля
+        const isEnabled = rule.enabled !== false;
         return `
         <div class="keyword-chip" style="color: ${rule.color}; border-color: ${rule.color}; background: ${rule.bgColor}; opacity: ${isEnabled ? 1 : 0.4}">
             <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleKeyword(${index}, this.checked)" title="Вкл/Выкл подсветку">
             ${escapeHtml(rule.word)}
             <input type="color" value="${rule.color}" onchange="changeKeywordColor(${index}, this.value)" title="Изменить цвет">
             <span onclick="removeKeyword(${index})" title="Удалить">✖</span>
-        </div>
-    `}).join('');
+        </div>`
+    }).join('');
 }
 
-// --- Обработчик для чекбоксов JSON (Делегирование событий) ---
-document.addEventListener('change', (e) => {
-    if (e.target && e.target.classList.contains('json-toggle')) {
-        const rowIndex = parseInt(e.target.getAttribute('data-row'));
-        const header = e.target.getAttribute('data-header');
-        
-        if (e.target.checked) {
-            jsonToggledRows.add(rowIndex);
-        } else {
-            jsonToggledRows.delete(rowIndex);
-        }
-        // Перерисовываем только конкретную ячейку, чтобы не сбивать прокрутку
-        updateCellContent(rowIndex, header);
-    }
-});
-
-// Очистка слешей от Кибаны
 function getCleanValue(rawValue) {
     if (!rawValue) return '';
     let text = rawValue.toString();
@@ -125,124 +86,16 @@ function getCleanValue(rawValue) {
     return text.trim();
 }
 
-// Умное извлечение и форматирование JSON внутри текста
-function extractAndFormatJSON(text) {
-    try {
-        return JSON.stringify(JSON.parse(text), null, 2);
-    } catch (e) {}
-
-    const firstCurly = text.indexOf('{');
-    const lastCurly = text.lastIndexOf('}');
-    
-    if (firstCurly !== -1 && lastCurly !== -1 && firstCurly < lastCurly) {
-        const prefix = text.substring(0, firstCurly);
-        const possibleJson = text.substring(firstCurly, lastCurly + 1);
-        const suffix = text.substring(lastCurly + 1);
-
-        try {
-            const parsed = JSON.parse(possibleJson);
-            return prefix + '\n' + JSON.stringify(parsed, null, 2) + '\n' + suffix;
-        } catch (e) {}
-    }
-
-    const firstSquare = text.indexOf('[');
-    const lastSquare = text.lastIndexOf(']');
-    
-    if (firstSquare !== -1 && lastSquare !== -1 && firstSquare < lastSquare) {
-        const prefix = text.substring(0, firstSquare);
-        const possibleJson = text.substring(firstSquare, lastSquare + 1);
-        const suffix = text.substring(lastSquare + 1);
-
-        try {
-            const parsed = JSON.parse(possibleJson);
-            return prefix + '\n' + JSON.stringify(parsed, null, 2) + '\n' + suffix;
-        } catch (e) {}
-    }
-
-    return text;
+function parseLogDate(dateStr) {
+    if (!dateStr) return null;
+    const parsed = Date.parse(dateStr);
+    return isNaN(parsed) ? null : new Date(parsed);
 }
 
-function updateCellContent(rowIndex, header) {
-    const contentDiv = document.getElementById(`content-${rowIndex}`);
-    if (!contentDiv) return;
-
-    let rawValue = currentData[rowIndex][header] || '';
-    let cleanValue = getCleanValue(rawValue);
-
-    if (jsonToggledRows.has(rowIndex)) {
-        cleanValue = extractAndFormatJSON(cleanValue);
-    }
-    
-    contentDiv.innerHTML = formatAndHighlight(cleanValue);
-}
-
-// --- Отрисовка таблицы с умным распределением ширины колонок ---
-function renderTable() {
-    const tableContainer = document.getElementById('table-container');
-    if (!currentData.length) return;
-
-    let table = '<table id="log-table">';
-    
-    table += '<colgroup>';
-    currentHeaders.forEach(header => {
-        const lowerHeader = header.toLowerCase();
-        
-        if (lowerHeader.includes('time') || lowerHeader.includes('@timestamp') || lowerHeader.includes('date')) {
-            table += '<col style="width: 180px;">';
-        } else if (lowerHeader.includes('level') || lowerHeader.includes('log.level') || lowerHeader.includes('status')) {
-            table += '<col style="width: 100px;">';
-        } else {
-            table += '<col>';
-        }
-    });
-    table += '</colgroup>';
-
-    // Заголовки таблицы
-    table += '<thead><tr>';
-    currentHeaders.forEach(header => {
-        const displayHeader = header === '_source' ? 'message' : header;
-        table += `<th>${displayHeader}</th>`;
-    });
-    table += '</tr></thead><tbody>';
-
-    // Строки таблицы
-    currentData.forEach((row, rowIndex) => {
-        table += '<tr>';
-        currentHeaders.forEach(header => {
-            const isMessageCol = header === '_source' || header === 'message';
-            let rawValue = row[header] || '';
-            let contentHtml = '';
-
-            if (isMessageCol) {
-                let cleanValue = getCleanValue(rawValue);
-                let isJsonChecked = jsonToggledRows.has(rowIndex);
-                
-                if (isJsonChecked) {
-                    cleanValue = extractAndFormatJSON(cleanValue);
-                }
-
-                // Сверхкомпактный чекбокс в одну строку HTML
-                contentHtml = `<div style="margin:0;padding:0;line-height:1;display:block;"><label style="font-size:11px;color:#888;cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;margin:0;padding:0;line-height:1;"><input type="checkbox" class="json-toggle" data-row="${rowIndex}" data-header="${header}" ${isJsonChecked ? 'checked' : ''} style="margin:0;padding:0;width:12px;height:12px;vertical-align:middle;">Форматировать JSON</label></div><div id="content-${rowIndex}" style="margin-top:4px;">${formatAndHighlight(cleanValue)}</div>`;
-            } else {
-                contentHtml = formatAndHighlight(rawValue);
-            }
-
-            table += `<td>${contentHtml}</td>`;
-        });
-        table += '</tr>';
-    });
-    
-    table += '</tbody></table>';
-    tableContainer.innerHTML = table;
-}
-
-// --- Утилиты ---
+// --- УТИЛИТЫ ФОРМАТИРОВАНИЯ И ПОДСВЕТКИ ---
 function escapeHtml(text) {
     if (!text) return '';
-    return text.toString()
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
+    return text.toString().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function escapeRegExp(string) {
@@ -252,14 +105,85 @@ function escapeRegExp(string) {
 function formatAndHighlight(text) {
     let htmlText = escapeHtml(text);
     
+    // Мгновенная и безопасная подсветка чипсов
     highlightRules.forEach(rule => {
-        // Пропускаем выключенные правила!
         if (rule.enabled === false) return; 
-
         const safeWord = escapeRegExp(rule.word);
         const regex = new RegExp(`(${safeWord})`, 'gi');
-        htmlText = htmlText.replace(regex, `<span style="background-color: ${rule.bgColor}; color: ${rule.color}; padding: 2px 4px; border-radius: 3px; font-weight: bold;">$1</span>`);
+        htmlText = htmlText.replace(regex, `<span style="background-color: ${rule.bgColor}; color: ${rule.color}; padding: 1px 3px; border-radius: 3px; font-weight: bold;">$1</span>`);
     });
 
     return htmlText;
+}
+
+// --- Отрисовка таблицы ---
+function renderTable() {
+    const tableContainer = document.getElementById('table-container');
+    if (!currentData.length) return;
+
+    const searchQuery = document.getElementById('search-input').value.toLowerCase().trim();
+    const dateFromVal = document.getElementById('date-from').value;
+    const dateToVal = document.getElementById('date-to').value;
+    const filterDateFrom = dateFromVal ? new Date(dateFromVal) : null;
+    const filterDateTo = dateToVal ? new Date(dateToVal) : null;
+
+    const filteredData = currentData.filter(row => {
+        if (searchQuery) {
+            const rowText = Object.values(row).join(' ').toLowerCase();
+            if (!rowText.includes(searchQuery)) return false;
+        }
+
+        if (filterDateFrom || filterDateTo) {
+            const dateHeader = currentHeaders.find(header => {
+                const lower = header.toLowerCase();
+                return lower.includes('time') || lower.includes('date') || lower.includes('@timestamp');
+            });
+            if (dateHeader) {
+                const logDate = parseLogDate(row[dateHeader]);
+                if (logDate) {
+                    if (filterDateFrom && logDate < filterDateFrom) return false;
+                    if (filterDateTo && logDate > filterDateTo) return false;
+                }
+            }
+        }
+        return true;
+    });
+
+    if (filteredData.length === 0) {
+        tableContainer.innerHTML = '<div style="padding: 40px; font-style: italic; color: #888; text-align: center;">Ничего не найдено...</div>';
+        return;
+    }
+
+    let table = '<table id="log-table"><colgroup>';
+    currentHeaders.forEach(header => {
+        const lowerHeader = header.toLowerCase();
+        if (lowerHeader.includes('time') || lowerHeader.includes('@timestamp') || lowerHeader.includes('date')) {
+            table += '<col style="width: 140px;">';
+        } else if (lowerHeader.includes('level') || lowerHeader.includes('log.level') || lowerHeader.includes('status')) {
+            table += '<col style="width: 100px;">';
+        } else {
+            table += '<col>';
+        }
+    });
+    table += '</colgroup><thead><tr>';
+    
+    currentHeaders.forEach(header => {
+        table += `<th>${header === '_source' ? 'message' : header}</th>`;
+    });
+    table += '</tr></thead><tbody>';
+
+    filteredData.forEach((row) => {
+        table += '<tr>';
+        currentHeaders.forEach(header => {
+            const isMessageCol = header === '_source' || header === 'message';
+            let rawValue = row[header] || '';
+            if (isMessageCol) rawValue = getCleanValue(rawValue);
+            
+            table += `<td>${formatAndHighlight(rawValue)}</td>`;
+        });
+        table += '</tr>';
+    });
+    
+    table += '</tbody></table>';
+    tableContainer.innerHTML = table;
 }
