@@ -48,10 +48,19 @@ function saveRules() { localStorage.setItem('highlightRules', JSON.stringify(hig
 function addKeyword() {
     const input = document.getElementById('keyword-input');
     const colorPicker = document.getElementById('keyword-color');
+    const styleSelect = document.getElementById('keyword-style');
     const word = input.value.trim();
     if (!word) return;
 
-    highlightRules.push({ word: word, color: colorPicker.value, bgColor: colorPicker.value + '33', enabled: true });
+    const isTextOnly = styleSelect.value === 'text';
+
+    highlightRules.push({ 
+        word: word, 
+        color: colorPicker.value, 
+        bgColor: colorPicker.value + '33', 
+        enabled: true,
+        textOnly: isTextOnly
+    });
     input.value = '';
     saveRules(); renderChips(); renderTable(); 
 }
@@ -59,6 +68,12 @@ function addKeyword() {
 window.removeKeyword = function(index) { highlightRules.splice(index, 1); saveRules(); renderChips(); renderTable(); }
 window.toggleKeyword = function(index, isChecked) { highlightRules[index].enabled = isChecked; saveRules(); renderChips(); renderTable(); }
 window.changeKeywordColor = function(index, newColor) { highlightRules[index].color = newColor; highlightRules[index].bgColor = newColor + '33'; saveRules(); renderChips(); renderTable(); }
+
+// Функция мгновенного переключения стиля (Маркер <-> Текст)
+window.toggleKeywordStyle = function(index) { 
+    highlightRules[index].textOnly = !highlightRules[index].textOnly; 
+    saveRules(); renderChips(); renderTable(); 
+}
 
 function renderChips() {
     const container = document.getElementById('active-keywords-container');
@@ -68,11 +83,16 @@ function renderChips() {
     }
     container.innerHTML = highlightRules.map((rule, index) => {
         const isEnabled = rule.enabled !== false;
+        const isTextOnly = rule.textOnly === true;
+        // Если только текст, убираем цветной фон с чипса
+        const currentBg = isTextOnly ? '#333' : rule.bgColor;
+        
         return `
-        <div class="keyword-chip" style="color: ${rule.color}; border-color: ${rule.color}; background: ${rule.bgColor}; opacity: ${isEnabled ? 1 : 0.4}">
+        <div class="keyword-chip" style="color: ${rule.color}; border-color: ${rule.color}; background: ${currentBg}; opacity: ${isEnabled ? 1 : 0.4}">
             <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="toggleKeyword(${index}, this.checked)" title="Вкл/Выкл подсветку">
             ${escapeHtml(rule.word)}
             <input type="color" value="${rule.color}" onchange="changeKeywordColor(${index}, this.value)" title="Изменить цвет">
+            <span onclick="toggleKeywordStyle(${index})" title="Изменить стиль (Маркер/Текст)" style="font-size: 14px;">${isTextOnly ? '🆃' : '🖍️'}</span>
             <span onclick="removeKeyword(${index})" title="Удалить">✖</span>
         </div>`
     }).join('');
@@ -110,7 +130,14 @@ function formatAndHighlight(text) {
         if (rule.enabled === false) return; 
         const safeWord = escapeRegExp(rule.word);
         const regex = new RegExp(`(${safeWord})`, 'gi');
-        htmlText = htmlText.replace(regex, `<span style="background-color: ${rule.bgColor}; color: ${rule.color}; padding: 1px 3px; border-radius: 3px; font-weight: bold;">$1</span>`);
+        
+        if (rule.textOnly) {
+            // Подсветка только текста
+            htmlText = htmlText.replace(regex, `<span style="color: ${rule.color}; font-weight: bold;">$1</span>`);
+        } else {
+            // Подсветка маркером
+            htmlText = htmlText.replace(regex, `<span style="background-color: ${rule.bgColor}; color: ${rule.color}; padding: 1px 3px; border-radius: 3px; font-weight: bold;">$1</span>`);
+        }
     });
 
     return htmlText;
@@ -118,7 +145,7 @@ function formatAndHighlight(text) {
 
 // --- Отрисовка таблицы ---
 function renderTable() {
-    const tableContainer = document.getElementById('table-container');
+    const tableContainerInner = document.getElementById('table-container-inner');
     if (!currentData.length) return;
 
     const searchQuery = document.getElementById('search-input').value.toLowerCase().trim();
@@ -150,7 +177,7 @@ function renderTable() {
     });
 
     if (filteredData.length === 0) {
-        tableContainer.innerHTML = '<div style="padding: 40px; font-style: italic; color: #888; text-align: center;">Ничего не найдено...</div>';
+        tableContainerInner.innerHTML = '<div style="padding: 40px; font-style: italic; color: #888; text-align: center;">Ничего не найдено...</div>';
         return;
     }
 
@@ -185,5 +212,5 @@ function renderTable() {
     });
     
     table += '</tbody></table>';
-    tableContainer.innerHTML = table;
+    tableContainerInner.innerHTML = table;
 }

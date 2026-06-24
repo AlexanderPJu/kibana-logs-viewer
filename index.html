@@ -12,12 +12,15 @@
         .controls { display: flex; flex-wrap: wrap; gap: 15px; align-items: center; background: #252526; padding: 15px; border-radius: 6px; border: 1px solid #333; }
         .controls-group { display: flex; align-items: center; gap: 8px; }
 
-        input[type="text"], input[type="datetime-local"] { background: #3c3c3c; border: 1px solid #555; color: white; padding: 6px 10px; border-radius: 3px; outline: none; font-size: 13px; }
+        input[type="text"], input[type="datetime-local"], select { background: #3c3c3c; border: 1px solid #555; color: white; padding: 6px 10px; border-radius: 3px; outline: none; font-size: 13px; }
         input[type="text"] { width: 180px; padding-right: 24px; } 
         input[type="datetime-local"] { color-scheme: dark; padding-right: 24px; }
         input[type="color"] { background: transparent; border: none; cursor: pointer; height: 32px; width: 32px; padding: 0; }
-        button { background-color: #0e639c; color: white; border: none; padding: 7px 15px; border-radius: 3px; cursor: pointer; font-size: 13px; }
-        button:hover { background-color: #1177bb; }
+        select { cursor: pointer; }
+        
+        /* Кнопки приглушенных гармоничных цветов для лучшего DX */
+        button { background-color: #3a3d41; color: #d4d4d4; border: 1px solid #555; padding: 7px 15px; border-radius: 3px; cursor: pointer; font-size: 13px; }
+        button:hover { background-color: #4a4d52; color: white; }
         
         .input-container { position: relative; display: inline-flex; align-items: center; }
         .clear-btn { position: absolute; right: 8px; cursor: pointer; color: #888; font-size: 11px; user-select: none; font-weight: bold; }
@@ -43,12 +46,21 @@
         .keyword-chip span { cursor: pointer; opacity: 0.7; font-size: 14px; margin-left: 2px; }
         .keyword-chip span:hover { opacity: 1; color: #ff6b6b; }
 
+        /* Контейнер таблицы */
         #table-container { padding: 0 20px 20px 20px; }
 
+        /* Обертка для таблицы с рамкой и скругленными краями */
+        .table-wrapper {
+            border: 1px solid #333;
+            border-radius: 6px;
+            overflow: hidden; /* Закругляет края самой таблицы */
+            background-color: #252526;
+        }
+
         #log-table { border-collapse: collapse; width: 100%; font-size: 14px; table-layout: fixed; }
-        #log-table th, #log-table td { border: 1px solid #444; padding: 6px 10px; text-align: left; vertical-align: top; white-space: pre-wrap; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word; }
+        #log-table th, #log-table td { border: 1px solid #333; padding: 6px 10px; text-align: left; vertical-align: top; white-space: pre-wrap; word-wrap: break-word; word-break: break-word; overflow-wrap: break-word; }
         
-        #log-table th { background-color: #333; position: sticky; top: 145px; z-index: 90; box-shadow: 0 1px 0 #444; }
+        #log-table th { background-color: #333; position: sticky; top: 145px; z-index: 90; }
     </style>
 </head>
 <body>
@@ -59,10 +71,14 @@
             
             <span style="color: #666;">|</span>
             
-            <!-- Блок добавления чипсов -->
+            <!-- Блок добавления чипсов с выбором стиля -->
             <div class="controls-group">
                 <input type="text" id="keyword-input" placeholder="Слово (напр. ERROR)">
                 <input type="color" id="keyword-color" value="#4caf50">
+                <select id="keyword-style" title="Стиль подсветки">
+                    <option value="marker">🖍️ Маркер</option>
+                    <option value="text">🆃 Текст</option>
+                </select>
                 <button id="add-keyword-btn">Добавить подсветку</button>
             </div>
 
@@ -75,7 +91,10 @@
                     <span class="clear-btn" onclick="clearSearch()" title="Очистить">✖</span>
                 </div>
                 
-                <div class="filter-group" style="margin-left: 5px;">
+                <!-- Зелёный отрезок (вертикальный разделитель) перенесен сюда -->
+                <span style="color: #666;">|</span>
+                
+                <div class="filter-group">
                     <span>С</span>
                     <div class="input-container">
                         <input type="datetime-local" id="date-from">
@@ -95,7 +114,12 @@
         <div id="active-keywords-container"></div>
     </div>
 
-    <div id="table-container"></div>
+    <!-- Таблица теперь бережно обернута в скругленный контейнер -->
+    <div id="table-container">
+        <div class="table-wrapper">
+            <div id="table-container-inner"></div>
+        </div>
+    </div>
 
     <script src="./renderer.js"></script>
     <script src="./node_modules/papaparse/papaparse.min.js"></script>
